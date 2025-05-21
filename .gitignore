@@ -30,4 +30,6 @@ examples/.libs
 examples/Makefile
 examples/mic
 examples/mis
+examples/iperf_bats_client
+examples/iperf_bats_server
 .vscode/
