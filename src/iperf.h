@@ -327,6 +327,12 @@ struct iperf_test {
   char *logfile; /* --logfile option */
   FILE *outfile;
 
+  bats_context_handle_t bats_io;
+  bats_config_handle_t bats_config;
+  bats_protocol_handle_t bats_listener;
+  bats_connection_handle_t bats_ctrl;
+  bats_connection_handle_t bats_data;
+
   int ctrl_sck;
   int mapped_v4;
   int listener;

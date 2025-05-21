@@ -2949,6 +2949,13 @@ int iperf_defaults(struct iperf_test *testp) {
   testp->congestion_used = NULL;
   testp->remote_congestion_used = NULL;
   testp->server_port = PORT;
+
+  testp->bats_io = NULL;
+  testp->bats_config = NULL;
+  testp->bats_listener = NULL;
+  testp->bats_ctrl = NULL;
+  testp->bats_data = NULL;
+
   testp->ctrl_sck = -1;
   testp->listener = -1;
   testp->prot_listener = -1;
@@ -3243,6 +3250,12 @@ void iperf_reset_test(struct iperf_test *test) {
   CPU_ZERO(&test->cpumask);
 #endif /* HAVE_CPUSET_SETAFFINITY */
   test->state = 0;
+
+  test->bats_io = NULL;
+  test->bats_config = NULL;
+  test->bats_listener = NULL;
+  test->bats_ctrl = NULL;
+  test->bats_data = NULL;
 
   test->ctrl_sck = -1;
   test->listener = -1;
