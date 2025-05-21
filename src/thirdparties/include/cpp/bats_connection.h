@@ -55,6 +55,8 @@ class IBatsConnection {
   /// @brief Indicate whether the connection is writable at current time.
   /// @return true if the connection is writable, false otherwise.
   virtual bool IsWritable() = 0;
+  /// @brief Close the connection.
+  virtual void Close() = 0;
 };
 
 #endif  // INCLUDE_CPP_BATS_CONNECTION_H_

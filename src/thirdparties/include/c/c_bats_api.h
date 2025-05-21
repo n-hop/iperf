@@ -49,6 +49,7 @@ bats_error_t bats_protocol_start_listen(bats_protocol_handle_t protocol, const c
                                         bats_listen_callback_t c_callback, void* user_data);
 
 // ================= Protocol Connection =====================
+void bats_connection_close(bats_connection_handle_t conn);
 bats_error_t bats_connection_send_data(bats_connection_handle_t conn, const unsigned char* data, int length);
 bats_error_t bats_connection_send_file(bats_connection_handle_t conn, const char* file_name);
 void bats_connection_set_callback(bats_connection_handle_t conn, bats_connection_callback_t c_callback,
