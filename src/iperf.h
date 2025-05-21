@@ -213,6 +213,7 @@ struct iperf_stream {
   int local_port;
   int remote_port;
   int socket;
+  bats_connection_handle_t bats_conn;
   int id;
   int sender;
   /* XXX: is settings just a pointer to the same struct in iperf_test? if not,

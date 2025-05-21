@@ -158,22 +158,11 @@ void bats_listener_callback(bats_connection_handle_t conn,
 void handle_accepted_stream(struct iperf_test *test,
                             bats_connection_handle_t conn) {
   if (test->state != CREATE_STREAMS) {
-    // bats_connection_t bats_ctrl;
-    // bats_connection_t bats_data;
-    int s;
-    int ret = -1;
-    signed char rbuf = ACCESS_DENIED;
     if (test->bats_ctrl == NULL) {
       test->bats_ctrl = conn;
-      if (Nread(test->ctrl_sck, test->cookie, COOKIE_SIZE, Ptcp) !=
-          COOKIE_SIZE) {
-        i_errno = IERECVCOOKIE;
-        goto error_handling;
-      }
-      FD_SET(test->ctrl_sck, &test->read_set);
-      if (test->ctrl_sck > test->max_fd)
-        test->max_fd = test->ctrl_sck;
-
+      // TODO(.):
+      // Read data from `bats_ctrl` to test->cookie [COOKIE_SIZE]
+      // processing state message.
       if (iperf_set_send_state(test, PARAM_EXCHANGE) != 0)
         goto error_handling;
       if (iperf_exchange_parameters(test) < 0)
@@ -195,9 +184,11 @@ void handle_accepted_stream(struct iperf_test *test,
           printf("successfully sent ACCESS_DENIED to an unsolicited connection "
                  "request during active test\n");
       }
-      // TODO(.): close?
-      // conn->close();
-      // close(s);
+      bats_connection_close(conn);
+    }
+    else {
+      signed char rbuf = ACCESS_DENIED;
+      // Just send ACCESS_DENIED.
     }
 
     // Set streams number
@@ -214,8 +205,7 @@ void handle_accepted_stream(struct iperf_test *test,
   }
 
 error_handling:
-  // close(s);
-  // conn->close();
+  bats_connection_close(conn);
   cleanup_server(test);
   return ret;
 }
@@ -289,78 +279,6 @@ retry:
     }
   }
   return 0;
-}
-
-int iperf_accept(struct iperf_test *test) {
-  int s;
-  int ret = -1;
-  signed char rbuf = ACCESS_DENIED;
-  socklen_t len;
-  struct sockaddr_storage addr;
-
-  len = sizeof(addr);
-  if ((s = accept(test->listener, (struct sockaddr *)&addr, &len)) < 0) {
-    i_errno = IEACCEPT;
-    return ret;
-  }
-
-  if (test->ctrl_sck == -1) {
-    /* Server free, accept new client */
-    test->ctrl_sck = s;
-    // set TCP_NODELAY for lower latency on control messages
-    int flag = 1;
-    if (setsockopt(test->ctrl_sck, IPPROTO_TCP, TCP_NODELAY, (char *)&flag,
-                   sizeof(int))) {
-      i_errno = IESETNODELAY;
-      goto error_handling;
-    }
-
-    if (Nread(test->ctrl_sck, test->cookie, COOKIE_SIZE, Ptcp) != COOKIE_SIZE) {
-      /*
-       * Note this error covers both the case of a system error
-       * or the inability to read the correct amount of data
-       * (i.e. timed out).
-       */
-      i_errno = IERECVCOOKIE;
-      goto error_handling;
-    }
-    FD_SET(test->ctrl_sck, &test->read_set);
-    if (test->ctrl_sck > test->max_fd)
-      test->max_fd = test->ctrl_sck;
-
-    if (iperf_set_send_state(test, PARAM_EXCHANGE) != 0)
-      goto error_handling;
-    if (iperf_exchange_parameters(test) < 0)
-      goto error_handling;
-    if (test->server_affinity != -1) {
-      if (iperf_setaffinity(test, test->server_affinity) != 0)
-        goto error_handling;
-    }
-    if (test->on_connect)
-      test->on_connect(test);
-  } else {
-    /*
-     * Don't try to read from the socket.  It could block an ongoing test.
-     * Just send ACCESS_DENIED.
-     * Also, if sending failed, don't return an error, as the request is not
-     * related to the ongoing test, and returning an error will terminate the
-     * test.
-     */
-    if (Nwrite(s, (char *)&rbuf, sizeof(rbuf), Ptcp) < 0) {
-      if (test->debug)
-        printf("failed to send ACCESS_DENIED to an unsolicited connection "
-               "request during active test\n");
-    } else {
-      if (test->debug)
-        printf("successfully sent ACCESS_DENIED to an unsolicited connection "
-               "request during active test\n");
-    }
-    close(s);
-  }
-  return 0;
-error_handling:
-  close(s);
-  return ret;
 }
 
 /**************************************************************************/
@@ -609,27 +527,28 @@ static void cleanup_server(struct iperf_test *test) {
 
   /* Close open streams */
   SLIST_FOREACH(sp, &test->streams, streams) {
-    if (sp->socket > -1) {
-      FD_CLR(sp->socket, &test->read_set);
-      FD_CLR(sp->socket, &test->write_set);
-      close(sp->socket);
-      sp->socket = -1;
+    if (sp->bats_conn != NULL) {
+      bats_connection_close(sp->bats_conn);
+      sp->bats_conn = NULL;
     }
   }
 
   /* Close open test sockets */
-  if (test->ctrl_sck > -1) {
-    close(test->ctrl_sck);
-    test->ctrl_sck = -1;
+  if (test->bats_ctrl != NULL) {
+    bats_connection_close(test->bats_ctrl);
+    test->bats_ctrl = NULL;
   }
-  if (test->listener > -1) {
+
+  if (test->bats_listener != NULL) {
     close(test->listener);
     test->listener = -1;
+    bats_protocol_destroy(test->bats_listener);
+    bats_config_destroy(test->bats_config);
+    bats_context_destroy(test->bats_io);
   }
-  if (test->prot_listener > -1) { // May remain open if create socket failed
-    close(test->prot_listener);
-    test->prot_listener = -1;
-  }
+
+  // TODO(.): port listener.
+  // if (test->prot_listener > -1) { // May remain open if create socket failed
 
   /* Cancel any remaining timers. */
   if (test->stats_timer != NULL) {
@@ -828,36 +747,15 @@ int iperf_run_bats_server(struct iperf_test *test) {
     }
 
     if (result > 0) {
-      if (FD_ISSET(test->listener, &read_set)) {
-        if (test->state != CREATE_STREAMS) {
-          if (iperf_accept(test) < 0) {
-            cleanup_server(test);
-            return -1;
-          }
-          FD_CLR(test->listener, &read_set);
-
-          // Set streams number
-          if (test->mode == BIDIRECTIONAL) {
-            streams_to_send = test->num_streams;
-            streams_to_rec = test->num_streams;
-          } else if (test->mode == RECEIVER) {
-            streams_to_rec = test->num_streams;
-            streams_to_send = 0;
-          } else {
-            streams_to_send = test->num_streams;
-            streams_to_rec = 0;
-          }
-        }
-      }
-
-      if (FD_ISSET(test->ctrl_sck, &read_set)) {
-        if (iperf_handle_message_server(test) < 0) {
+      // check on listener
+      // check on ctrl_sck
+      /*
+         if (iperf_handle_message_server(test) < 0) {
           cleanup_server(test);
           return -1;
-        }
-        FD_CLR(test->ctrl_sck, &read_set);
-      }
-
+          }
+      */
+      // check on created streams
       if (test->state == CREATE_STREAMS) {
         if (FD_ISSET(test->prot_listener, &read_set)) {
 
