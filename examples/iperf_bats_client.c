@@ -7,8 +7,7 @@
 #include <unistd.h>
 
 #include <iperf_api.h>
-
-int iperf_run_bats_client(struct iperf_test *test);
+#include <iperf_bats_api.h>
 
 int main(int argc, char **argv) {
   char *argv0;
@@ -60,5 +59,3 @@ int main(int argc, char **argv) {
   iperf_free_test(test);
   exit(EXIT_SUCCESS);
 }
-
-int iperf_run_bats_client(struct iperf_test *test) {}

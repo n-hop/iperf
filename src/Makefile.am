@@ -23,6 +23,8 @@ libiperf_la_SOURCES     = \
                         iperf_locale.c \
                         iperf_locale.h \
                         iperf_server_api.c \
+                        iperf_bats_api.h \
+                        iperf_bats_api.c \
                         iperf_tcp.c \
                         iperf_tcp.h \
                         iperf_udp.c \
